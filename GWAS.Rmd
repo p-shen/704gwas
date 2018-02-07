@@ -1,0 +1,131 @@
+---
+title: "704 Assignment 1 - GWAS"
+author: "Peter Shen"
+date: 'Sys.date()'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(broom)
+```
+
+#### Background Questions
+
+1) The diseases of interested in WTCCC is bipolar disorder (BD), coronary artery disease (CAD), Crohn’s disease (CD), hypertension (HT), rheumatoid arthritis (RA), type 1 diabetes (T1D), and type 2 diabetes (T2D).
+
+E + G -> P -> D
+
+* E: None examined
+* G: 500K SNP Microarray Data
+* P: Gene expression of the variant on causing phenotypic changes to things such as elevated blood pressure, blood glucose, or blood tryglycerides, etc.
+* D: bipolar disorder (BD), coronary artery disease (CAD), Crohn’s disease (CD), hypertension (HT), rheumatoid arthritis (RA), type 1 diabetes (T1D), and type 2 diabetes (T2D)
+
+2) 
+* **BD**: Individuals have suffered one or more episodes of pathologically elevated mood. They were interviewed by psychiatrists and measured using a OPCRIT checklist and psychiatric diagnoses were assigned using Research Diagnostic Criteria. 
+* **CAD**: Hospital validated history of either myocardial infarction or coronary revascularization (coronary artery bypass surgery or percutaneous coronary angioplasty) before their 66th birthday.
+* **CD**: Conventional endoscopic, radiological and histopathological criteria.
+* **HT**: History of hypertension diagnosed before 60 yr of age, with confirmed blood pressure recordings corresponding to seated levels.150/100mmHg (if based on one reading), or the mean of 3 readings greater than 145/95mmHg
+* **RA**: Caucasian ver the age of 18 yr and satisfied the 1987 American College of Rheumatology Criteria for RA127 modified for genetic studie
+* **T1D**: An age of diagnosis below 17 yr and have insulin dependence since diagnosis
+* **T2D**: Based on either current prescribed treatment with sulphonylureas, biguanides, other oral agents and/or insulin or, in the case of individuals treated with diet alone, historical or contemporary laboratory evidence of hyperglycaemia.
+
+
+3) Data collection was performed on 500k Affymetrix SNP Microarray Chip and then imputed against 2,193,483 HapMap SNPs not on the Affymetrix chip. The SNP chip uses DNA probes that are perfect complements to different SNP variant. The sample DNA hybridizes to either of the SNP probes, and they can be called using optical scans, which are then mapped to the SNP mapping of the chip to generate the matrix of the different SNP variants. Because these chips only have ~500k SNPs, the dataset is expanded through HapMap imputations, which work through via linkage disequilibrium (LD).
+
+4) 
+`$ wc -l *tped`
+
+500568 total SNPs were assayed for each individual.
+
+5)
+```{r}
+df5 <- data.frame("CC"=c(270, 436), "CT"=c(957,1398), "TT"=c(771, 1170))
+df5.additive <- df5 %>% mutate(C=CC+CT) %>% mutate("T"=CT+TT) %>% select("C", "T")
+
+```
+
+A) 
+```{r}
+df5.freq <- df5.additive %>% 
+  mutate(sum=C+`T`) %>% 
+  transmute(C=C/sum, `T`=`T`/sum)
+df5.freq
+```
+
+B)
+```{r}
+chisq.test(df5.additive)
+```
+
+With a p-value of 0.924, we do not have strong enough evidence to conclude there is an association between rsGOINGALLIN and bipolar disorder.
+
+C)
+```{r}
+df5.healthy <- df5[2,]
+total <- sum(df5.healthy[1,])
+df5.healthy <- df5.healthy %>% bind_rows(data.frame(CC=0.25*total, CT=0.50*total, TT=0.25*total))
+chisq.test(df5.healthy)
+```
+
+With a p-value of less than 1e-15, there is strong enough evidence that the healthy population deviates from the Hardy-Weinberg equilibrium.
+
+#### Execution of GWAS
+
+Import sample data for chromosome 22.
+```{r}
+control.58c <- read.delim('sampledata/Affx_gt_58C_Chiamo_22.tped.gz', sep="\t", header=F)
+control.nbs <- read.delim('sampledata/Affx_gt_NBS_Chiamo_22.tped.gz', sep="\t", header=F)
+t2d22 <- read.delim('sampledata/Affx_gt_T2D_Chiamo_22.tped.gz', sep="\t", header=F)
+snps <- read.delim('sampledata/snps_22', header=F)
+```
+
+Combine the two control samples
+```{r}
+control <- control.58c %>% bind_cols(control.nbs[,5:ncol(control.nbs)])
+```
+
+
+Sample with 1 SNP
+```{r}
+csnp <- control[1,]
+dsnp <- t2d22[1,]
+
+# get chromosome number from the file input n
+
+# WTCCC snp to rsid
+snps[which(snps[,4]==csnp[1,2]), 5]
+
+# build contingency table
+snpTable <- table(t(csnp[1,5:ncol(csnp)]), useNA="no") %>% 
+  bind_rows(table(t(dsnp[1,5:ncol(dsnp)]), useNA="no"))
+
+snpTable.colNames <- unlist(strsplit(colnames(snpTable[,2]), " "))
+snpTable.additive <- snpTable %>% transmute(a1=.[[1]]+.[[2]], a2=.[[2]]+.[[3]]) # additive model for alleles
+colnames(snpTable.additive) <- snpTable.colNames
+
+# determine major and minor alleles
+majorAllele <- max.col(snpTable.additive[1,])
+minorAllele <- 3-majorAllele
+majorAllele <- colnames(snpTable.additive)[majorAllele]
+minorAllele <- colnames(snpTable.additive)[minorAllele]
+
+# minor allele frequency in controls
+minAlleleFreqControl <- snpTable.additive[1,minorAllele]/sum(snpTable.additive[1])
+minAlleleFreqDisease <- snpTable.additive[2,minorAllele]/sum(snpTable.additive[2])
+
+# oddsRatio
+OR <- (snpTable.additive[2,minorAllele]*snpTable.additive[1,majorAllele])/(snpTable.additive[2,majorAllele]*snpTable.additive[1,minorAllele])
+
+# chisq test for the snp
+pvalue.snp <- chisq.test(snpTable.additive)$p.value
+
+# HW test
+hw <- snpTable[1,]
+total <- sum(hw)
+colnames(hw) <- c("AA", "AB", "BB")
+hw <- hw %>% bind_rows(data.frame(AA=0.25*total, AB=0.50*total, BB=0.25*total))
+pvalue.hw <- chisq.test(hw)$p.value
+
+```
