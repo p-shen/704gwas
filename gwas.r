@@ -52,14 +52,21 @@ control <- control1 %>% bind_cols(control2[,5:ncol(control2)])
 
 GWA <- function(csnp, dsnp, snpMap) {
   
-  # WTCCC snp to rsid
-  rsid <- snps[which(snps[,4]==csnp[1,2]), 5]
-  
   # build contingency table
   snpTable <- table(t(csnp[1,5:ncol(csnp)]), useNA="no") %>% bind_rows(table(t(dsnp[1,5:ncol(dsnp)]), useNA="no"))
   snpTable[is.na(snpTable)] <- 0
   
-  if(ncol(snpTable)<3) {snpTable <- bind_cols(snpTable, data.frame(`N_N`=c(0,0)))}
+  # check for edge cases with alleles
+  if (ncol(snpTable)==1){
+    # if there is only 1 SNP, there's not going to be any contributional effect from this snp so just skip it
+    return(NA)
+  } else if(ncol(snpTable)==2) {
+    # if there are 2 SNPS found in the samples, then we just add an empty count for the third possible configuration of the SNP
+    snpTable <- bind_cols(snpTable, data.frame(`N_N`=c(0,0)))
+  }
+  
+  # WTCCC snp to rsid
+  rsid <- snps[which(snps[,4]==csnp[1,2]), 5]
   
   snpTable.colNames <- unlist(strsplit(colnames(snpTable[,2]), " "))
   snpTable.additive <- snpTable %>% transmute(a1=.[[1]]*2+.[[2]], a2=.[[2]]+.[[3]]*2)
@@ -96,14 +103,13 @@ GWA <- function(csnp, dsnp, snpMap) {
 
 gwaResult <- data.frame(`rsid`=character(), `MinorAllele`=character(),  `MajorAllele`=character(), `DiseaseFrequency`=numeric(), `ControlFrequency`=numeric(), `OR`=numeric(), `pvalue`=numeric(), `hwpvalue`=numeric(), stringsAsFactors=F)
 
-# for (i in min(nrow(control), nrow(disease))) {
-for (i in 1:300) {
+for (i in min(nrow(control), nrow(disease))) {
   csnp <- control[i,]
   dsnp <- disease[i,]
   print(i)
   
   res <- GWA(csnp, dsnp, snpMap = snps)
-  gwaResult <- bind_rows(gwaResult, res)
+  if (!is.na(res)) {gwaResult <- bind_rows(gwaResult, res)}
 }
 
 gwaResult <- gwaResult %>% mutate(`chrom`=chrom)
