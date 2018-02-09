@@ -159,3 +159,11 @@ write.table(gwaResult, file=paste0("gwa", chrom, ".csv"), sep="\t")
 
 ```
 
+Stitch Together the output files
+```{r}
+gwaResult <- data.frame(`rsid`=character(), `MinorAllele`=character(),  `MajorAllele`=character(), `DiseaseFrequency`=numeric(), `ControlFrequency`=numeric(), `OR`=numeric(), `pvalue`=numeric(), `hwpvalue`=numeric(), stringsAsFactors=F)
+for(i in 21:22) {
+  gwaResult <- bind_rows(gwaResult, read.delim(paste0("./results/gwa", i, ".csv"), sep="\t", header=T))
+}
+```
+
