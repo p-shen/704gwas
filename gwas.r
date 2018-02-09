@@ -4,8 +4,8 @@ library(optparse)
 
 # define the options that the script should support
 opt.list <- list(
-  make_option(c("-c1","--control1"),type='character',help="file for the 1st control sample"),
-  make_option(c("-c2","--control2"),type='character',help="file for the 2nd control sample"),
+  make_option(c("-a","--a"),type='character',help="file for the 1st control sample"),
+  make_option(c("-b","--b"),type='character',help="file for the 2nd control sample"),
   make_option(c("-d", "--disease"), type='character',help="file for the diseased sample"),
   make_option(c("-n", "--chromosome"), type='integer',help="chromosome number"),
   make_option(c("-s", "--snp"), type='character',help="SNP rsid file")
@@ -15,11 +15,13 @@ opt.list <- list(
 pa <- parse_args(OptionParser(option_list=opt.list),positional_arguments=T)
 opt <- pa$options;
 
-control1 <- opt$c1
-control2 <- opt$c2
-disease <- opt$d
-chrom <- opt$n
-snps <- opt$s
+print(opt)
+
+control1 <- opt$a
+control2 <- opt$b
+disease <- opt$disease
+chrom <- opt$chromosome
+snps <- opt$snp
 
 print(paste(control1, control2, disease, chrom, snps, sep = ", "))
 
