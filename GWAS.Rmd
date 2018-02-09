@@ -42,7 +42,7 @@ E + G -> P -> D
 5)
 ```{r}
 df5 <- data.frame("CC"=c(270, 436), "CT"=c(957,1398), "TT"=c(771, 1170))
-df5.additive <- df5 %>% mutate(C=CC+CT) %>% mutate("T"=CT+TT) %>% select("C", "T")
+df5.additive <- df5 %>% mutate(C=CC*2+CT) %>% mutate("T"=CT+TT*2) %>% select("C", "T")
 
 ```
 
@@ -56,17 +56,17 @@ df5.freq
 
 B)
 ```{r}
-chisq.test(df5.additive)
+chisq.test(df5.additive, correct = F)
 ```
 
 With a p-value of 0.924, we do not have strong enough evidence to conclude there is an association between rsGOINGALLIN and bipolar disorder.
 
 C)
 ```{r}
-df5.healthy <- df5[2,]
-total <- sum(df5.healthy[1,])
-df5.healthy <- df5.healthy %>% bind_rows(data.frame(CC=0.25*total, CT=0.50*total, TT=0.25*total))
-chisq.test(df5.healthy)
+df5.control <- df5[2,]
+N <- sum(df5.control)
+df5.hw <- df5.control %>% transmute(p=(2*CC+CT)/(2*CC+2*CT+2*TT)) %>% mutate(q=1-p) %>% transmute(CC=N*p^2, CT=N*2*p*q, TT=N*q^2)
+chisq.test(bind_rows(df5.control, df5.hw), correct = F)
 ```
 
 With a p-value of less than 1e-15, there is strong enough evidence that the healthy population deviates from the Hardy-Weinberg equilibrium.
@@ -89,43 +89,62 @@ control <- control.58c %>% bind_cols(control.nbs[,5:ncol(control.nbs)])
 
 Sample with 1 SNP
 ```{r}
-csnp <- control[1,]
-dsnp <- t2d22[1,]
+GWA <- function(csnp, dsnp, snpMap) {
+  
+  # WTCCC snp to rsid
+  rsid <- snps[which(snps[,4]==csnp[1,2]), 5]
+  
+  # build contingency table
+  snpTable <- table(t(csnp[1,5:ncol(csnp)]), useNA="no") %>% bind_rows(table(t(dsnp[1,5:ncol(dsnp)]), useNA="no"))
+  snpTable[is.na(snpTable)] <- 0
+  
+  if(ncol(snpTable)<3) {snpTable <- bind_cols(snpTable, data.frame(`N_N`=c(0,0)))}
+  
+  print(str(snpTable))
+  
+  snpTable.colNames <- unlist(strsplit(colnames(snpTable[,2]), " "))
+  snpTable.additive <- snpTable %>% transmute(a1=.[[1]]*2+.[[2]], a2=.[[2]]+.[[3]]*2)
+  colnames(snpTable.additive) <- snpTable.colNames
+  
+  # determine major and minor alleles
+  majorAllele <- max.col(snpTable.additive[1,])
+  minorAllele <- colnames(snpTable.additive[,-majorAllele])
+  majorAllele <- colnames(snpTable.additive[,majorAllele])
+  
+  # minor allele frequency in controls
+  minAlleleFreqControl <- snpTable.additive[1,minorAllele]/sum(snpTable.additive[1])
+  minAlleleFreqDisease <- snpTable.additive[2,minorAllele]/sum(snpTable.additive[2])
+  
+  # oddsRatio
+  OR <- (snpTable.additive[2,minorAllele]*snpTable.additive[1,majorAllele])/(snpTable.additive[2,majorAllele]*snpTable.additive[1,minorAllele])
+  
+  # chisq test for the snp
+  snpTable.additive
+  pvalue.snp <- chisq.test(snpTable.additive, correct = F)$p.value
+  
+  # HW test
+  hw.control <- snpTable[1,]
+  total <- sum(hw.control)
+  colnames(hw.control) <- c("AA", "AB", "BB")
+  hw <- hw.control %>% transmute(p=(2*AA+AB)/(2*AA+2*AB+2*BB)) %>% mutate(q=1-p) %>% transmute(AA=total*p^2,   AB=total*2*p*q, BB=total*q^2)
+  hw <- hw.control %>% bind_rows(hw)
+  pvalue.hw <- chisq.test(hw, correct = F)$p.value
+  
+  df <- data.frame(`rsid`=as.character(rsid), `MinorAllele`=as.character(minorAllele),  `MajorAllele`=as.character(majorAllele), `DiseaseFrequency`=as.numeric(minAlleleFreqDisease), `ControlFrequency`=as.numeric(minAlleleFreqControl), `OR`=as.numeric(OR), `pvalue`=as.numeric(pvalue.snp), `hwpvalue`=as.numeric(pvalue.hw), stringsAsFactors=F)
 
-# get chromosome number from the file input n
+  return(df)
+}
 
-# WTCCC snp to rsid
-snps[which(snps[,4]==csnp[1,2]), 5]
+gwaResult <- data.frame(`rsid`=character(), `MinorAllele`=character(),  `MajorAllele`=character(), `DiseaseFrequency`=numeric(), `ControlFrequency`=numeric(), `OR`=numeric(), `pvalue`=numeric(), `hwpvalue`=numeric(), stringsAsFactors=F)
 
-# build contingency table
-snpTable <- table(t(csnp[1,5:ncol(csnp)]), useNA="no") %>% 
-  bind_rows(table(t(dsnp[1,5:ncol(dsnp)]), useNA="no"))
-
-snpTable.colNames <- unlist(strsplit(colnames(snpTable[,2]), " "))
-snpTable.additive <- snpTable %>% transmute(a1=.[[1]]+.[[2]], a2=.[[2]]+.[[3]]) # additive model for alleles
-colnames(snpTable.additive) <- snpTable.colNames
-
-# determine major and minor alleles
-majorAllele <- max.col(snpTable.additive[1,])
-minorAllele <- 3-majorAllele
-majorAllele <- colnames(snpTable.additive)[majorAllele]
-minorAllele <- colnames(snpTable.additive)[minorAllele]
-
-# minor allele frequency in controls
-minAlleleFreqControl <- snpTable.additive[1,minorAllele]/sum(snpTable.additive[1])
-minAlleleFreqDisease <- snpTable.additive[2,minorAllele]/sum(snpTable.additive[2])
-
-# oddsRatio
-OR <- (snpTable.additive[2,minorAllele]*snpTable.additive[1,majorAllele])/(snpTable.additive[2,majorAllele]*snpTable.additive[1,minorAllele])
-
-# chisq test for the snp
-pvalue.snp <- chisq.test(snpTable.additive)$p.value
-
-# HW test
-hw <- snpTable[1,]
-total <- sum(hw)
-colnames(hw) <- c("AA", "AB", "BB")
-hw <- hw %>% bind_rows(data.frame(AA=0.25*total, AB=0.50*total, BB=0.25*total))
-pvalue.hw <- chisq.test(hw)$p.value
+for(i in 45:50) {
+  csnp <- control[i,]
+  dsnp <- t2d22[i,]
+  print(i)
+  
+  res <- GWA(csnp, dsnp, snpMap = snps)
+  gwaResult <- bind_rows(gwaResult, res)
+}
 
 ```
+
