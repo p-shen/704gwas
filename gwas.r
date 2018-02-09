@@ -15,8 +15,6 @@ opt.list <- list(
 pa <- parse_args(OptionParser(option_list=opt.list),positional_arguments=T)
 opt <- pa$options;
 
-print(opt)
-
 control1 <- opt$a
 control2 <- opt$b
 disease <- opt$disease
@@ -98,9 +96,10 @@ GWA <- function(csnp, dsnp, snpMap) {
 
 gwaResult <- data.frame(`rsid`=character(), `MinorAllele`=character(),  `MajorAllele`=character(), `DiseaseFrequency`=numeric(), `ControlFrequency`=numeric(), `OR`=numeric(), `pvalue`=numeric(), `hwpvalue`=numeric(), stringsAsFactors=F)
 
-for (i in min(nrow(control), nrow(disease))) {
+# for (i in min(nrow(control), nrow(disease))) {
+for (i in 1:300) {
   csnp <- control[i,]
-  dsnp <- t2d22[i,]
+  dsnp <- disease[i,]
   print(i)
   
   res <- GWA(csnp, dsnp, snpMap = snps)
