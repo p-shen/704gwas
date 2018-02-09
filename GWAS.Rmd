@@ -79,6 +79,7 @@ control.58c <- read.delim('sampledata/Affx_gt_58C_Chiamo_22.tped.gz', sep="\t", 
 control.nbs <- read.delim('sampledata/Affx_gt_NBS_Chiamo_22.tped.gz', sep="\t", header=F)
 disease <- read.delim('sampledata/Affx_gt_T2D_Chiamo_22.tped.gz', sep="\t", header=F)
 snps <- read.delim('sampledata/snps_22', header=F)
+chrom <- 22
 ```
 
 Combine the two control samples
@@ -143,7 +144,7 @@ GWA <- function(csnp, dsnp, snpMap) {
 gwaResult <- data.frame(`rsid`=character(), `MinorAllele`=character(),  `MajorAllele`=character(), `DiseaseFrequency`=numeric(), `ControlFrequency`=numeric(), `OR`=numeric(), `pvalue`=numeric(), `hwpvalue`=numeric(), stringsAsFactors=F)
 
 # for (i in 1:min(nrow(control), nrow(disease))) {
-for (i in 205) {
+for (i in 11:20) {
   csnp <- control[i,]
   dsnp <- disease[i,]
   print(i)
@@ -152,7 +153,9 @@ for (i in 205) {
   if (!is.na(res)) {gwaResult <- bind_rows(gwaResult, res)}
 }
 
-# gwaResult <- gwaResult %>% mutate(`chrom`=chrom)
+gwaResult <- gwaResult %>% mutate(`chrom`=chrom)
+
+write.table(gwaResult, file=paste0("gwa", chrom, ".csv"), sep="\t")
 
 ```
 

@@ -1,0 +1,9 @@
+# osx noise
+.DS_Store
+
+# Data files
+WTCCC/*
+
+# sbatch output files
+*.err
+*.out
