@@ -103,7 +103,7 @@ GWA <- function(csnp, dsnp, snpMap) {
 
 gwaResult <- data.frame(`rsid`=character(), `MinorAllele`=character(),  `MajorAllele`=character(), `DiseaseFrequency`=numeric(), `ControlFrequency`=numeric(), `OR`=numeric(), `pvalue`=numeric(), `hwpvalue`=numeric(), stringsAsFactors=F)
 
-for (i in min(nrow(control), nrow(disease))) {
+for (i in 1:min(nrow(control), nrow(disease))) {
   csnp <- control[i,]
   dsnp <- disease[i,]
   print(i)
