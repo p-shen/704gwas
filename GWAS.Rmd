@@ -77,7 +77,7 @@ Import sample data for chromosome 22.
 ```{r}
 control.58c <- read.delim('sampledata/Affx_gt_58C_Chiamo_22.tped.gz', sep="\t", header=F)
 control.nbs <- read.delim('sampledata/Affx_gt_NBS_Chiamo_22.tped.gz', sep="\t", header=F)
-t2d22 <- read.delim('sampledata/Affx_gt_T2D_Chiamo_22.tped.gz', sep="\t", header=F)
+disease <- read.delim('sampledata/Affx_gt_T2D_Chiamo_22.tped.gz', sep="\t", header=F)
 snps <- read.delim('sampledata/snps_22', header=F)
 ```
 
@@ -99,8 +99,6 @@ GWA <- function(csnp, dsnp, snpMap) {
   snpTable[is.na(snpTable)] <- 0
   
   if(ncol(snpTable)<3) {snpTable <- bind_cols(snpTable, data.frame(`N_N`=c(0,0)))}
-  
-  print(str(snpTable))
   
   snpTable.colNames <- unlist(strsplit(colnames(snpTable[,2]), " "))
   snpTable.additive <- snpTable %>% transmute(a1=.[[1]]*2+.[[2]], a2=.[[2]]+.[[3]]*2)
@@ -131,20 +129,23 @@ GWA <- function(csnp, dsnp, snpMap) {
   pvalue.hw <- chisq.test(hw, correct = F)$p.value
   
   df <- data.frame(`rsid`=as.character(rsid), `MinorAllele`=as.character(minorAllele),  `MajorAllele`=as.character(majorAllele), `DiseaseFrequency`=as.numeric(minAlleleFreqDisease), `ControlFrequency`=as.numeric(minAlleleFreqControl), `OR`=as.numeric(OR), `pvalue`=as.numeric(pvalue.snp), `hwpvalue`=as.numeric(pvalue.hw), stringsAsFactors=F)
-
+  
   return(df)
 }
 
 gwaResult <- data.frame(`rsid`=character(), `MinorAllele`=character(),  `MajorAllele`=character(), `DiseaseFrequency`=numeric(), `ControlFrequency`=numeric(), `OR`=numeric(), `pvalue`=numeric(), `hwpvalue`=numeric(), stringsAsFactors=F)
 
-for(i in 45:50) {
+# for (i in min(nrow(control), nrow(disease))) {
+for (i in 50:100) {
   csnp <- control[i,]
-  dsnp <- t2d22[i,]
+  dsnp <- disease[i,]
   print(i)
   
   res <- GWA(csnp, dsnp, snpMap = snps)
   gwaResult <- bind_rows(gwaResult, res)
 }
+
+gwaResult <- gwaResult %>% mutate(`chrom`=chrom)
 
 ```
 

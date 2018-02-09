@@ -14,4 +14,4 @@
 module load gcc/6.2.0
 module load R/3.4.1
 
-Rscript gwas.r -a "WTCCC/58C/Affx_gt_58C_Chiamo_22.tped.gz" -b "WTCCC/NBS/Affx_gt_NBS_Chiamo_22.tped.gz" -d "WTCCC/NBS/Affx_gt_NBS_Chiamo_22.tped.gz" -n 22 -s "WTCCC/58C/snps/snps_22"
+Rscript gwas.r -a "WTCCC/58C/Affx_gt_58C_Chiamo_22.tped.gz" -b "WTCCC/NBS/Affx_gt_NBS_Chiamo_22.tped.gz" -d "WTCCC/T2D/Affx_gt_T2D_Chiamo_22.tped.gz" -n 22 -s "WTCCC/58C/snps/snps_22"
