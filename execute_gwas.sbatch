@@ -1,10 +1,10 @@
 #!/bin/bash
 
 #SBATCH -p short   # queue name
-#SBATCH -t 0-20:00       # hours:minutes runlimit after which job will be killed.
-#SBATCH -n 8      # number of cores requested
-#SBATCH --mem=64G # memory requested
-#SBATCH -J essential_genes         # Job name
+#SBATCH -t 0-4:00       # hours:minutes runlimit after which job will be killed.
+#SBATCH -n 4      # number of cores requested
+#SBATCH --mem=24G # memory requested
+#SBATCH -J gwas_analysis         # Job name
 #SBATCH -o %j.out       # File to which standard out will be written
 #SBATCH -e %j.err       # File to which standard err will be written
 #SBATCH --mail-type=ALL
