@@ -15,11 +15,13 @@ opt.list <- list(
 pa <- parse_args(OptionParser(option_list=opt.list),positional_arguments=T)
 opt <- pa$options;
 
-control1 <- opt$control1
-control2 <- opt$control2
-disease <- opt$disease
-chrom <- opt$chromosome
-snps <- opt$snp
+control1 <- opt$c1
+control2 <- opt$c2
+disease <- opt$d
+chrom <- opt$n
+snps <- opt$s
+
+print(paste(control1, control2, disease, chrom, snps, sep = ", "))
 
 # check to see if the arguments are both provided
 if(is.null(control1) || is.null(control2) || is.null(disease) || is.null(chrom) || is.null(snps)) {
