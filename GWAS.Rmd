@@ -90,7 +90,10 @@ control <- control.58c %>% bind_cols(control.nbs[,5:ncol(control.nbs)])
 
 Sample with 1 SNP
 ```{r}
-GWA <- function(csnp, dsnp, snpMap) {
+GWA <- function(i) {
+  
+  csnp <- control[i,]
+  dsnp <- disease[i,]
   
   # build contingency table
   snpTable <- table(t(csnp[1,5:ncol(csnp)]), useNA="no") %>% bind_rows(table(t(dsnp[1,5:ncol(dsnp)]), useNA="no"))
@@ -105,58 +108,72 @@ GWA <- function(csnp, dsnp, snpMap) {
     snpTable <- bind_cols(snpTable, data.frame(`N_N`=c(0,0)))
   }
   
-  # WTCCC snp to rsid
-  rsid <- snps[which(snps[,4]==csnp[1,2]), 5]
-  
   snpTable.colNames <- unlist(strsplit(colnames(snpTable[,2]), " "))
   snpTable.additive <- snpTable %>% transmute(a1=.[[1]]*2+.[[2]], a2=.[[2]]+.[[3]]*2)
   colnames(snpTable.additive) <- snpTable.colNames
   
   # determine major and minor alleles
   majorAllele <- max.col(snpTable.additive[1,])
-  minorAllele <- colnames(snpTable.additive[,-majorAllele])
-  majorAllele <- colnames(snpTable.additive[,majorAllele])
+  minorAllele <- colnames(snpTable.additive[1,-majorAllele])
+  majorAllele <- colnames(snpTable.additive[1,majorAllele])
   
-  # minor allele frequency in controls
-  minAlleleFreqControl <- snpTable.additive[1,minorAllele]/sum(snpTable.additive[1])
-  minAlleleFreqDisease <- snpTable.additive[2,minorAllele]/sum(snpTable.additive[2])
+  return(c(`WTCCC`=as.character(csnp[1,2]), 
+                    `MinorAllele`=minorAllele,  
+                    `MajorAllele`=majorAllele,
+                    `ControlMajorAlleleCount`=snpTable.additive[[1,majorAllele]],
+                    `ControlMinorAlleleCount`=snpTable.additive[[1,minorAllele]],
+                    `DiseaseMajorAlleleCount`=snpTable.additive[[2,majorAllele]],
+                    `DiseaseMinorAlleleCount`=snpTable.additive[[2,minorAllele]],
+                    `AACount`=snpTable[[1,1]],
+                    `ABCount`=snpTable[[1,2]],
+                    `BBCount`=snpTable[[1,3]]))
   
-  # oddsRatio
-  OR <- (snpTable.additive[2,minorAllele]*snpTable.additive[1,majorAllele])/(snpTable.additive[2,majorAllele]*snpTable.additive[1,minorAllele])
-  
-  # chisq test for the snp
-  snpTable.additive
-  pvalue.snp <- chisq.test(snpTable.additive, correct = F)$p.value
-  
-  # HW test
-  hw.control <- snpTable[1,]
-  total <- sum(hw.control)
-  colnames(hw.control) <- c("AA", "AB", "BB")
-  hw <- hw.control %>% transmute(p=(2*AA+AB)/(2*AA+2*AB+2*BB)) %>% mutate(q=1-p) %>% transmute(AA=total*p^2,   AB=total*2*p*q, BB=total*q^2)
-  hw <- hw.control %>% bind_rows(hw)
-  pvalue.hw <- chisq.test(hw, correct = F)$p.value
-  
-  df <- data.frame(`rsid`=as.character(rsid), `MinorAllele`=as.character(minorAllele),  `MajorAllele`=as.character(majorAllele), `DiseaseFrequency`=as.numeric(minAlleleFreqDisease), `ControlFrequency`=as.numeric(minAlleleFreqControl), `OR`=as.numeric(OR), `pvalue`=as.numeric(pvalue.snp), `hwpvalue`=as.numeric(pvalue.hw), stringsAsFactors=F)
-  
-  return(df)
 }
 
-gwaResult <- data.frame(`rsid`=character(), `MinorAllele`=character(),  `MajorAllele`=character(), `DiseaseFrequency`=numeric(), `ControlFrequency`=numeric(), `OR`=numeric(), `pvalue`=numeric(), `hwpvalue`=numeric(), stringsAsFactors=F)
+gwaResult <- data.frame(t(sapply(seq_along(1:50), GWA)), stringsAsFactors = F)
 
-# for (i in 1:min(nrow(control), nrow(disease))) {
-for (i in 11:20) {
-  csnp <- control[i,]
-  dsnp <- disease[i,]
-  print(i)
+# Class conversions
+gwaResult <- gwaResult %>% mutate(ControlMajorAlleleCount=as.numeric(ControlMajorAlleleCount),
+                                  ControlMinorAlleleCount=as.numeric(ControlMinorAlleleCount),
+                                  DiseaseMajorAlleleCount=as.numeric(DiseaseMajorAlleleCount),
+                                  DiseaseMinorAlleleCount=as.numeric(DiseaseMinorAlleleCount),
+                                  AACount=as.numeric(AACount),
+                                  ABCount=as.numeric(ABCount),
+                                  BBCount=as.numeric(BBCount)) %>%
+  mutate(rsid=snps[which(snps[,4] %in% WTCCC), 5]) %>% ## get rsid
+  ## frequency calculations
+  mutate(ControlMinAlleleFreq=ControlMinorAlleleCount/(ControlMinorAlleleCount+ControlMajorAlleleCount)) %>% 
+  mutate(DiseaseMinAlleleFreq=DiseaseMinorAlleleCount/(DiseaseMinorAlleleCount+DiseaseMajorAlleleCount)) %>%
+  ## Odds Ratio Calculation
+  mutate(OR=(DiseaseMinorAlleleCount*ControlMajorAlleleCount)/(DiseaseMajorAlleleCount*ControlMinorAlleleCount)) %>%
+  ## generate HW p and q values
+  mutate(p=(2*AACount+ABCount)/(2*AACount+2*ABCount+2*BBCount), total = AACount + ABCount + BBCount) %>% mutate(q=1-p) %>% mutate(HWAA=total*p^2, HWAB=total*2*p*q, HWBB=total*q^2)
   
-  res <- GWA(csnp, dsnp, snpMap = snps)
-  if (!is.na(res)) {gwaResult <- bind_rows(gwaResult, res)}
-}
-
-gwaResult <- gwaResult %>% mutate(`chrom`=chrom)
+  
+# Chi-sq tests for SNP and HW
+gwaResult$PValue <- apply(gwaResult, 1, function(x) {
+  chisq.test(
+    matrix(
+      as.numeric(c(x['ControlMajorAlleleCount'], x['ControlMinorAlleleCount'],
+                   x['DiseaseMajorAlleleCount'], x['DiseaseMinorAlleleCount'])),
+      nrow=2, ncol=2, byrow = T)
+    , correct = F)$p.value
+  })
+  
+# HW chi-sq test
+gwaResult$HWPValue <- apply(gwaResult, 1, function(x) {
+  chisq.test(
+    matrix(
+      as.numeric(c(x['AACount'], x['ABCount'], x['BBCount'],
+                   x['HWAA'], x['HWAB'], x['HWBB'])),
+      nrow=2, ncol=3, byrow = T)
+    , correct = F)$p.value
+  })
+  
+gwaResult <- gwaResult %>% select(rsid, MinorAllele, MajorAllele, DiseaseMinAlleleFreq, ControlMinAlleleFreq, OR, PValue, HWPValue)
+gwaResult$Chrom <- chrom
 
 write.table(gwaResult, file=paste0("gwa", chrom, ".csv"), sep="\t")
-
 ```
 
 Stitch Together the output files
@@ -165,5 +182,10 @@ gwaResult <- data.frame(`rsid`=character(), `MinorAllele`=character(),  `MajorAl
 for(i in 21:22) {
   gwaResult <- bind_rows(gwaResult, read.delim(paste0("./results/gwa", i, ".csv"), sep="\t", header=T))
 }
+```
+
+Import the results of GWAS
+```{r}
+gwasResult <- read.delim('gwa_results.csv', sep="\t", header=T)
 ```
 
