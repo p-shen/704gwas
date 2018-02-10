@@ -130,27 +130,44 @@ GWA <- function(i) {
   
 }
 
+print(paste("Performing GWA for chromosome", chrom))
 gwaResult <- data.frame(t(sapply(seq_along(1:10), GWA)), stringsAsFactors = F)
 
+print("Finished GWAS, writing out intermediate data")
+write.table(gwaResult, file=paste0("./imm/gwa", chrom, ".csv"), sep="\t")
+
+# Remove any rows with NA values
+print("Remove rows with NA")
+gwaResult <- gwaResult[complete.cases(gwaResult),]
+
 # Class conversions
+print("Class conversion")
 gwaResult <- gwaResult %>% mutate(ControlMajorAlleleCount=as.numeric(ControlMajorAlleleCount),
                                   ControlMinorAlleleCount=as.numeric(ControlMinorAlleleCount),
                                   DiseaseMajorAlleleCount=as.numeric(DiseaseMajorAlleleCount),
                                   DiseaseMinorAlleleCount=as.numeric(DiseaseMinorAlleleCount),
                                   AACount=as.numeric(AACount),
                                   ABCount=as.numeric(ABCount),
-                                  BBCount=as.numeric(BBCount)) %>%
-  mutate(rsid=snps[which(snps[,4] %in% WTCCC), 5]) %>% ## get rsid
-  ## frequency calculations
-  mutate(ControlMinAlleleFreq=ControlMinorAlleleCount/(ControlMinorAlleleCount+ControlMajorAlleleCount)) %>% 
-  mutate(DiseaseMinAlleleFreq=DiseaseMinorAlleleCount/(DiseaseMinorAlleleCount+DiseaseMajorAlleleCount)) %>%
-  ## Odds Ratio Calculation
-  mutate(OR=(DiseaseMinorAlleleCount*ControlMajorAlleleCount)/(DiseaseMajorAlleleCount*ControlMinorAlleleCount)) %>%
-  ## generate HW p and q values
+                                  BBCount=as.numeric(BBCount))
+
+# get RSID
+print("Get RSID")
+gwaResult <- gwaResult %>% mutate(rsid=snps[which(snps[,4] %in% WTCCC), 5])
+  
+print("Frequency Calculations")
+gwaResult <- gwaResult %>% 
+  mutate(ControlMinAlleleFreq=ControlMinorAlleleCount/(ControlMinorAlleleCount+ControlMajorAlleleCount)) %>%
+  mutate(DiseaseMinAlleleFreq=DiseaseMinorAlleleCount/(DiseaseMinorAlleleCount+DiseaseMajorAlleleCount))
+
+print("Calculate OR Ratios")
+gwaResult <- gwaResult %>% mutate(OR=(DiseaseMinorAlleleCount*ControlMajorAlleleCount)/(DiseaseMajorAlleleCount*ControlMinorAlleleCount)) %>%
+print("generate HW p and q values")
+gwaResult <- gwaResult %>% 
   mutate(p=(2*AACount+ABCount)/(2*AACount+2*ABCount+2*BBCount), total = AACount + ABCount + BBCount) %>% mutate(q=1-p) %>% mutate(HWAA=total*p^2, HWAB=total*2*p*q, HWBB=total*q^2)
   
   
 # Chi-sq tests for SNP and HW
+print("Chi-sq Test for SNPs")
 gwaResult$PValue <- apply(gwaResult, 1, function(x) {
   chisq.test(
     matrix(
@@ -161,6 +178,7 @@ gwaResult$PValue <- apply(gwaResult, 1, function(x) {
   })
   
 # HW chi-sq test
+print("Chi-sq Test for HW")
 gwaResult$HWPValue <- apply(gwaResult, 1, function(x) {
   chisq.test(
     matrix(
@@ -169,10 +187,15 @@ gwaResult$HWPValue <- apply(gwaResult, 1, function(x) {
       nrow=2, ncol=3, byrow = T)
     , correct = F)$p.value
   })
-  
+
+# concatenate to the results we want
+print("Select results table")
 gwaResult <- gwaResult %>% select(rsid, MinorAllele, MajorAllele, DiseaseMinAlleleFreq, ControlMinAlleleFreq, OR, PValue, HWPValue)
+
+print("Attach chromosome number")
 gwaResult$Chrom <- chrom
 
+print("Write out results to file")
 write.table(gwaResult, file=paste0("./results/gwa", chrom, ".csv"), sep="\t")
 ```
 
