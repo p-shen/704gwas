@@ -90,7 +90,7 @@ GWA <- function(i) {
   
 }
 
-gwaResult <- data.frame(t(sapply(seq_along(1:50), GWA)), stringsAsFactors = F)
+gwaResult <- data.frame(t(sapply(seq_len(nrow(disease)), GWA)), stringsAsFactors = F)
 
 # Class conversions
 gwaResult <- gwaResult %>% mutate(ControlMajorAlleleCount=as.numeric(ControlMajorAlleleCount),
@@ -133,4 +133,4 @@ gwaResult$HWPValue <- apply(gwaResult, 1, function(x) {
 gwaResult <- gwaResult %>% select(rsid, MinorAllele, MajorAllele, DiseaseMinAlleleFreq, ControlMinAlleleFreq, OR, PValue, HWPValue)
 gwaResult$Chrom <- chrom
 
-write.table(gwaResult, file=paste0("gwa", chrom, ".csv"), sep="\t")
+write.table(gwaResult, file=paste0("./results/gwa", chrom, ".csv"), sep="\t")
