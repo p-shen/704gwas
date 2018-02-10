@@ -91,7 +91,10 @@ GWA <- function(i) {
 }
 
 print(paste("Performing GWA for chromosome", chrom))
-gwaResult <- data.frame(t(sapply(seq_len(nrow(disease)), GWA)), stringsAsFactors = F)
+# gwaResult <- data.frame(apply(seq_along(1:5), 1, GWA), stringsAsFactors = F)
+
+gwaResult <- do.call(rbind, lapply(seq_len(nrow(disease)), GWA))
+gwaResult <- data.frame(gwaResult, stringsAsFactors = F)
 
 print("Finished GWAS, writing out intermediate data")
 write.table(gwaResult, file=paste0("./imm/gwa", chrom, ".csv"), sep="\t")
