@@ -123,8 +123,9 @@ gwaResult <- gwaResult %>%
   mutate(DiseaseMinAlleleFreq=DiseaseMinorAlleleCount/(DiseaseMinorAlleleCount+DiseaseMajorAlleleCount))
 
 print("Calculate OR Ratios")
-gwaResult <- gwaResult %>% mutate(OR=(DiseaseMinorAlleleCount*ControlMajorAlleleCount)/(DiseaseMajorAlleleCount*ControlMinorAlleleCount)) %>%
-  print("generate HW p and q values")
+gwaResult <- gwaResult %>% mutate(OR=(DiseaseMinorAlleleCount*ControlMajorAlleleCount)/(DiseaseMajorAlleleCount*ControlMinorAlleleCount))
+
+print("generate HW p and q values")
 gwaResult <- gwaResult %>% 
   mutate(p=(2*AACount+ABCount)/(2*AACount+2*ABCount+2*BBCount), total = AACount + ABCount + BBCount) %>% mutate(q=1-p) %>% mutate(HWAA=total*p^2, HWAB=total*2*p*q, HWBB=total*q^2)
 
