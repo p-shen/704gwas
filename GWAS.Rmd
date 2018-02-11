@@ -74,7 +74,7 @@ With a p-value of less than 1e-15, there is strong enough evidence that the heal
 #### Execution of GWAS
 
 Import sample data for chromosome 22.
-```{r}
+```{r eval=F}
 control.58c <- read.delim('sampledata/Affx_gt_58C_Chiamo_22.tped.gz', sep="\t", header=F)
 control.nbs <- read.delim('sampledata/Affx_gt_NBS_Chiamo_22.tped.gz', sep="\t", header=F)
 disease <- read.delim('sampledata/Affx_gt_T2D_Chiamo_22.tped.gz', sep="\t", header=F)
@@ -83,13 +83,13 @@ chrom <- 22
 ```
 
 Combine the two control samples
-```{r}
+```{r eval=F}
 control <- control.58c %>% bind_cols(control.nbs[,5:ncol(control.nbs)])
 ```
 
 
 Sample with 1 SNP
-```{r}
+```{r eval=F}
 GWA <- function(i) {
   
   csnp <- control[i,]
@@ -181,9 +181,6 @@ gwaResult$PValue <- apply(gwaResult, 1, function(x) {
       nrow=2, ncol=2, byrow = T)
     , correct = F)$p.value
   })
-
-chisq.test(matrix(c(5511, 497, 3674, 324), nrow=2, ncol=2, byrow = T) , correct = F)$p.value
-gwaResult[which(gwaResult$rsid=='rs4506565'),]
   
 # HW chi-sq test
 print("Chi-sq Test for HW")
@@ -208,7 +205,7 @@ write.table(gwaResult, file=paste0("./results/gwa", chrom, ".csv"), sep="\t")
 ```
 
 Stitch Together the output files
-```{r}
+```{r  eval=F}
 gwaResult <- do.call(rbind, lapply(1:22, function(i) {
   read.delim(paste0("./results/gwa", i, ".csv"), sep="\t", header=T)
 }))
@@ -218,24 +215,29 @@ write.table(gwaResult, file=paste0("gwa_results.csv"), sep="\t")
 
 Import the results of GWAS
 ```{r}
-gwasResult <- read.delim('gwa_results.csv', sep="\t", header=T)
-snps <- read.delim('imm/snps/all_snps.csv', header=F)
+gwaResult <- read.delim('gwa_results.csv', sep="\t", header=T)
+```
 
-snps <- select(snps, V4, V5) %>% transmute(WTCCC=V4, rsid=V5)
-gwaResult <- gwaResult %>% left_join(snps, by='WTCCC')
+Filter out the SNPs that deviate from Hardy-Weinberg because these are most likely due to genotyping errors
+```{r}
+print(paste("SNPs before filter: ", nrow(gwaResult)))
+gwaResult <- gwaResult %>% filter(HWPValue > 0.05)
+print(paste("SNPs before filter: ", nrow(gwaResult)))
+```
+
+Calculate Bonferroni Threshold
+```{r}
+bf.pvalue <- 0.05/nrow(gwaResult)
+print(paste("Bonferonni threshold: ", bf.pvalue))
+```
+
+Write out the file to `T2D.csv`
+```{r}
+write.table(gwaResult, file=paste0("T2Ds.csv"), sep="\t")
+```
 
 
-gwa10 <- read.delim('imm/gwa10.csv', sep="\t", header=T)
-rswe <- gwa10[which(gwa10$WTCCC=='SNP_A-2005462'),] #rs4506565
-
-chisq.test(
-  matrix(
-    as.numeric(c(rswe['ControlMajorAlleleCount'], rswe['ControlMinorAlleleCount'],
-                 rswe['DiseaseMajorAlleleCount'], rswe['DiseaseMinorAlleleCount'])),
-    nrow=2, ncol=2, byrow = T)
-  , correct = F)$p.value
-
-
-gwasResult[which(gwasResult$rsid=='rs4506565'),]
+```{r}
+gwaResult[which(gwaResult$rsid=='rs4506565'),]
 ```
 
