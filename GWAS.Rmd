@@ -155,7 +155,8 @@ gwaResult <- gwaResult %>% mutate(ControlMajorAlleleCount=as.numeric(ControlMajo
 
 # get RSID
 print("Get RSID")
-gwaResult <- gwaResult %>% mutate(rsid=snps[which(snps[,4] %in% WTCCC), 5])
+snps <- select(snps, V4, V5) %>% transmute(WTCCC=V4, rsid=V5)
+gwaResult <- gwaResult %>% left_join(snps, by='WTCCC')
   
 print("Frequency Calculations")
 gwaResult <- gwaResult %>% 
@@ -180,6 +181,9 @@ gwaResult$PValue <- apply(gwaResult, 1, function(x) {
       nrow=2, ncol=2, byrow = T)
     , correct = F)$p.value
   })
+
+chisq.test(matrix(c(5511, 497, 3674, 324), nrow=2, ncol=2, byrow = T) , correct = F)$p.value
+gwaResult[which(gwaResult$rsid=='rs4506565'),]
   
 # HW chi-sq test
 print("Chi-sq Test for HW")
@@ -215,5 +219,23 @@ write.table(gwaResult, file=paste0("gwa_results.csv"), sep="\t")
 Import the results of GWAS
 ```{r}
 gwasResult <- read.delim('gwa_results.csv', sep="\t", header=T)
+snps <- read.delim('imm/snps/all_snps.csv', header=F)
+
+snps <- select(snps, V4, V5) %>% transmute(WTCCC=V4, rsid=V5)
+gwaResult <- gwaResult %>% left_join(snps, by='WTCCC')
+
+
+gwa10 <- read.delim('imm/gwa10.csv', sep="\t", header=T)
+rswe <- gwa10[which(gwa10$WTCCC=='SNP_A-2005462'),] #rs4506565
+
+chisq.test(
+  matrix(
+    as.numeric(c(rswe['ControlMajorAlleleCount'], rswe['ControlMinorAlleleCount'],
+                 rswe['DiseaseMajorAlleleCount'], rswe['DiseaseMinorAlleleCount'])),
+    nrow=2, ncol=2, byrow = T)
+  , correct = F)$p.value
+
+
+gwasResult[which(gwasResult$rsid=='rs4506565'),]
 ```
 

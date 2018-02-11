@@ -115,7 +115,8 @@ gwaResult <- gwaResult %>% mutate(ControlMajorAlleleCount=as.numeric(ControlMajo
 
 # get RSID
 print("Get RSID")
-gwaResult <- gwaResult %>% mutate(rsid=snps[which(snps[,4] %in% WTCCC), 5])
+snps <- select(snps, V4, V5) %>% transmute(WTCCC=V4, rsid=V5)
+gwaResult <- gwaResult %>% left_join(snps, by='WTCCC')
 
 print("Frequency Calculations")
 gwaResult <- gwaResult %>% 

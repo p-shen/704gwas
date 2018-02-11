@@ -4,6 +4,7 @@
 # Data files
 WTCCC/*
 results/*
+imm/*
 
 # sbatch output files
 *.err
