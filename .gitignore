@@ -3,6 +3,7 @@
 
 # Data files
 WTCCC/*
+results/*
 
 # sbatch output files
 *.err
