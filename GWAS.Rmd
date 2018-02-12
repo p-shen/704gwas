@@ -254,7 +254,8 @@ write.table(gwaResult, file="T2Ds.csv", sep="\t")
 
 QQPlot of PValues
 ```{r}
-ggplot(gwaResult) + geom_qq(mapping=aes(sample=PValue), distribution = qunif) + geom_abline(intercept = 0, slope = 1)
+gwaResult$logPvalue <- -log10(gwaResult$PValue)
+ggplot(gwaResult) + geom_qq(mapping=aes(sample=logPvalue), distribution = qunif) + geom_abline(intercept = 0, slope = 1) + ylim(0, 15)
 ```
 
 Manhattan Plot of PValues
@@ -273,8 +274,12 @@ gwaResult %>% filter(PValue < bf.pvalue) %>% summarise(N=nrow(.), min=min(PValue
 ```
 
 ##### 2 C)
-* Population stratification
-* PCA
+
+Some of the possible introductions of bias into the associations could be due to population effects -- the effect of population stratification where individuals from different lineages have sufficiently different linkage disequilibrium profiles that is picked up by the association test and lead to significance of association. One could control for this phenonenon by either recalibrating the p-values based on genome inflation factor or control for it using PCA approaches such as used in EIGENSTRAT.
+
+Another source of bias also due to LD is that the SNPs that was found to be associative to disease may not be the causal SNP since it could just be in LD with the causal SNP.
+
+One source of bias is that if an SNP has a relatively small MAF (eg. < 5%) but would have a large effect size, we cannot reliably measure the effect of the SNPs due to lack of power to detect the SNP in the population.
 
 ##### 2 D)
 Investigating SNP `rs4506565`
@@ -284,57 +289,50 @@ c(rsid=as.character(snp.4506565$rsid), chr=snp.4506565$Chrom,  pvalue=snp.450656
 ```
 For this SNP, since the OR denotes comparison of major allele to the minor allele, the odds of getting T2D for each allele `A` is decreased by 0.73, or inversely the odds of getting T2D for each allele `T` is increased by 1.37.
 
-This is a SNP within the Transcription factor 7-like 2 (TCF7L2) gene (0). This SNP has been shown to be associated with T2D in several published papers(1,2,3). The TCF7L2 protein is a transcription factor that acts in the Wnt signalling pathway, which is an actor in transcription regulation, which in part may disrupt the expression of GLP-1 and lead to increased risk for T2D (4)
+This is a SNP within the Transcription factor 7-like 2 (TCF7L2) gene (1). This SNP has been shown to be associated with T2D in several published papers(2,3,4). The TCF7L2 protein is a transcription factor that acts in the Wnt signalling pathway, which is an actor in transcription regulation, which in part may disrupt the expression of GLP-1 and lead to increased risk for T2D (5)
 
-0 https://www.snpedia.com/index.php/Rs4506565
-1 https://www.ncbi.nlm.nih.gov/pubmed/16936217?dopt=Abstract
-2 https://www.ncbi.nlm.nih.gov/pubmed/16855264?dopt=Abstract
-3 https://www.ncbi.nlm.nih.gov/pubmed/17206141?dopt=Abstract
-4 https://www.ncbi.nlm.nih.gov/pubmed/18599616
+1. https://www.snpedia.com/index.php/Rs4506565
+2. https://www.ncbi.nlm.nih.gov/pubmed/16936217?dopt=Abstract
+3. https://www.ncbi.nlm.nih.gov/pubmed/16855264?dopt=Abstract
+4. https://www.ncbi.nlm.nih.gov/pubmed/17206141?dopt=Abstract
+5. https://www.ncbi.nlm.nih.gov/pubmed/18599616
+
+##### 3)
+In additive models, each individual allele count linearly contributes to a phenotypic outcome. However, in a genotypic model, each genotype is associated with a phenotypic outcome instead.
+
+To test the additive model using chi-squared association, as it is done in this assignment, we would need to count the sum of the individual alleles and execute a porportionality test (chi-square) between control and disease. To carry out a linear regression, we would need to reshape our data and assign numeric values (eg, 0 for `A` and 1 for `a`) to the count of alleles paired with their outcomes for each individual (disease vs. control), and then execute a linear regression model.
+
+To test the genotypic model using porportionality test, we would do the same as before, but instead of executing the test on the sum of the individual alles, we cound sum genotypes of the population sample instead. To again carry out a linear regression, we would reshape our data such that each genotypic is its own variable in the model (eg. `X` for `AA`, `Y` for `AB`, and `Z` for `BB`) paired with their outcomes for the individual.
+
+##### 4)
+In the background question, we are only looking at one candidate SNP that could cause association with disease. In GWAS, we are searching genome-wide for SNPs that are associated with disease. In GWAS, since p-values are uniformly distributed, we would have to correct for multiple hypothesis testing using Bonferonni threshold or FDR to control for false positives. GWAS gives greater power at detecting association compared to examining one single SNP.
+
+##### 5)
+We could control for population stratification in the SNP array using PCA or adjusting for genome inflation factor.
 
 
 ##### 6)
 ```{r}
-x2.values <- qchisq(gwaResult$PValue, 1)
+x2.values <- qchisq(1-gwaResult$PValue, 1) # other tail
 x2.median.obs <- median(x2.values)
 genome.IF <- x2.median.obs / 0.455
 print(genome.IF)
 ```
 
-
+##### 7)
 
 ```{r}
-gwa5.imm <- read.delim('./imm_bk/gwa5.csv', sep="\t", header=T)
-gwa5.res <- read.delim('./results/gwa5.csv', sep="\t", header=T)
-snps <- read.delim('imm_bk/snps/snps_22', sep="\t", header=F)
-
-gwa22.imm <- read.delim('./imm_bk/gwa22.csv', sep="\t", header=T)
-gwa22.res <- read.delim('./results/gwa22.csv', sep="\t", header=T)
+gwaResult <- gwaResult %>% mutate(PValue.adjust=pchisq(qchisq(1-PValue, 1)/genome.IF, 1, lower.tail = F)) %>% filter(PValue.adjust > 0)
 ```
 
 ```{r}
-# allele.counts <- t(apply(control[56:60,-1:-4], 1, function(x) {
-#   tab <- table(t(x))
-#   if(length(tab)< 3){
-#     return(NA)
-#   }
-#   append(dimnames(tab)[[1]], unlist(tab)) 
-#   }
-#   ))
-
-
-test.fun <- function(x, allele) {
-  tab <- table(t(x))
-  print(x[allele])
-  print(tab)
-  ifelse(is.na(x[allele]), x[allele], 0)
-}
-
-
-allele.counts <- apply(control[1:10,-1:-4], 1, function(x) test.fun(x, "C T"))
-                   
-allele.counts
-
+gwaResult$logPvalue <- -log10(gwaResult$PValue)
+ggplot(gwaResult) + geom_qq(mapping=aes(sample=logPvalue), distribution = qunif) + geom_abline(intercept = 0, slope = 1) + ylim(0, 2)
 ```
 
+
+```{r}
+manhattan.data <- gwaResult %>% select(SNP=rsid, CHR=Chrom, P=PValue.adjust, BP=pos)
+manhattan(manhattan.data)
+```
 

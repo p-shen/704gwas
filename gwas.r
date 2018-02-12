@@ -8,7 +8,8 @@ opt.list <- list(
   make_option(c("-b","--b"),type='character',help="file for the 2nd control sample"),
   make_option(c("-d", "--disease"), type='character',help="file for the diseased sample"),
   make_option(c("-n", "--chromosome"), type='integer',help="chromosome number"),
-  make_option(c("-s", "--snp"), type='character',help="SNP rsid file")
+  make_option(c("-s", "--snp"), type='character',help="SNP rsid file"),
+  make_option(c("-g", "--disease_name"), type='character',help="Disease name (eg. T2D)")
 )
 
 # do the argument parsing
@@ -20,6 +21,7 @@ control2 <- opt$b
 disease <- opt$disease
 chrom <- opt$chromosome
 snps <- opt$snp
+diseaseName <- opt$disease_name
 
 print(paste(control1, control2, disease, chrom, snps, sep = ", "))
 
@@ -89,6 +91,7 @@ GWA <- function(csnp, dsnp) {
 }
 
 # QC for files
+print(paste("Performing GWAS for ", diseaseName, " on chromosome ", chrom))
 print(paste("Performing QC for chromosome", chrom))
 control.misread <- which(control$V1==chrom)
 control <- control[control.misread,]
@@ -103,7 +106,7 @@ gwaResult <- do.call(rbind, lapply(seq_len(nrow(control)), function(i){GWA(contr
 gwaResult <- data.frame(gwaResult, stringsAsFactors = F)
 
 print("Finished GWAS, writing out intermediate data")
-write.table(gwaResult, file=paste0("./imm/gwa", chrom, ".csv"), sep="\t")
+write.table(gwaResult, file=paste("./imm/", diseaseName, "/", "gwa", chrom, ".csv"), sep="\t")
 
 # Remove any rows with NA values
 print("Remove rows with NA")
@@ -163,4 +166,4 @@ print("Select results table")
 gwaResult <- gwaResult %>% select(Chrom, rsid, pos, MinorAllele, MajorAllele, DiseaseMinAlleleFreq, ControlMinAlleleFreq, OR, PValue, HWPValue)
 
 print("Write out results to file")
-write.table(gwaResult, file=paste0("./results/gwa", chrom, ".csv"), sep="\t")
+write.table(gwaResult, file=paste("./results/",diseaseName, "/",  chrom, ".csv"), sep="\t")
