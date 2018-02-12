@@ -9,6 +9,7 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(broom)
+library(knitr)
 ```
 
 #### Background Questions
@@ -73,6 +74,8 @@ With a p-value of less than 1e-15, there is strong enough evidence that the heal
 
 #### Execution of GWAS
 
+##### 1) Executing GWAS for small set of SNPs
+
 Import sample data for chromosome 22.
 ```{r eval=F}
 control.58c <- read.delim('sampledata/Affx_gt_58C_Chiamo_22.tped.gz', sep="\t", header=F)
@@ -87,9 +90,10 @@ Combine the two control samples
 control <- control.58c %>% bind_cols(control.nbs[,5:ncol(control.nbs)])
 ```
 
-
 Sample with 1 SNP
 ```{r eval=F}
+# Scaling done on O2
+
 GWA <- function(csnp, dsnp) {
   
   if (csnp[[1]] != chrom || dsnp[[1]] != chrom){
@@ -133,7 +137,7 @@ GWA <- function(csnp, dsnp) {
 }
 
 print(paste("Performing GWA for chromosome", chrom))
-gwaResult <- do.call(rbind, lapply(seq_along(1:10), function(i){GWA(control[i,], disease[i,])}))
+gwaResult <- do.call(rbind, lapply(seq_along(1:1), function(i){GWA(control[i,], disease[i,])}))
 gwaResult <- data.frame(gwaResult, stringsAsFactors = F)
 
 print("Finished GWAS, writing out intermediate data")
@@ -175,12 +179,12 @@ gwaResult <- gwaResult %>%
 # Chi-sq tests for SNP and HW
 print("Chi-sq Test for SNPs")
 gwaResult$PValue <- apply(gwaResult, 1, function(x) {
-  chisq.test(
-    matrix(
+  m <- matrix(
       as.numeric(c(x['ControlMajorAlleleCount'], x['ControlMinorAlleleCount'],
                    x['DiseaseMajorAlleleCount'], x['DiseaseMinorAlleleCount'])),
       nrow=2, ncol=2, byrow = T)
-    , correct = F)$p.value
+  print(m)
+  chisq.test(m, correct = T)$p.value
   })
   
 # HW chi-sq test
@@ -214,17 +218,23 @@ write.table(gwaResult, file="gwa_results.csv", sep="\t")
 Import the results of GWAS
 ```{r}
 gwaResult <- read.delim('gwa_results.csv', sep="\t", header=T)
-gwaResult$OR <- 1/gwaResult$OR
-snps.all <- read.delim('snps_all', sep="\t", header=F)
 
+snps <- read.delim('imm/snps/snps_22', sep="\t", header=F)
+snps <- snps %>% select(BP=V2, rsid=V5)
+gwaResult <- gwaResult %>% left_join(snps, by="rsid")
 ```
 
+##### 1 A)
 Filter out SNPs
 ```{r}
 print(paste("SNPs before filter: ", nrow(gwaResult)))
-  # SNPs that deviate from Hardy-Weinberg because these are most likely due to genotyping errors
-  # and SNPs that have MAF < 0.01
-gwaResult <- gwaResult %>%  filter(HWPValue > 0.05 & ControlMinAlleleFreq > 0.01)
+
+# Some SNPs have pvalues of 0
+gwaResult <- gwaResult %>%  filter(PValue > 0 & HWPValue > 0)
+
+# SNPs that deviate from Hardy-Weinberg because these are most likely due to genotyping errors
+# and SNPs that have MAF < 0.01
+gwaResult <- gwaResult %>%  filter(HWPValue > 0.05 & ControlMinAlleleFreq > 0.01 & DiseaseMinAlleleFreq > 0)
 print(paste("SNPs after filter: ", nrow(gwaResult)))
 ```
 
@@ -234,28 +244,68 @@ bf.pvalue <- 0.05/nrow(gwaResult)
 print(paste("Bonferonni threshold: ", bf.pvalue))
 ```
 
+##### 1 B)
 Write out the file to `T2D.csv`
-```{r}
-write.table(gwaResult, file=paste0("T2Ds.csv"), sep="\t")
+```{r eval=F}
+write.table(gwaResult, file="T2Ds.csv", sep="\t")
 ```
 
-Manhattan and QQPlot of PValues
-```{r}
-n <- nrow(gwaResult)
-probabilities <- (1:n)/(n+1)
-unif.quantiles <- qunif(probabilities, min = 0, 1)
-plot(sort(unif.quantiles), sort(gwaResult$PValue) , xlab = 'Theoretical Quantiles from Uniform Distribution', ylab = 'Sample Quantiles of GWAS PValues', main = 'Uniform Quantile-Quantile Plot of GWAS PValues')
-abline(0,1)
-```
+##### 2 A)
 
+QQPlot of PValues
 ```{r}
 ggplot(gwaResult) + geom_qq(mapping=aes(sample=PValue), distribution = qunif)
 ```
 
+Manhattan Plot of PValues
+```{r}
+library(qqman)
+manhattan.data <- gwaResult %>% select(SNP=rsid, CHR=Chrom, P=PValue, BP)
+manhattan(manhattan.data)
+```
+
+
+##### 2 B)
+
+SNPs exceeding Bonferonni threshold for T2D
+```{r}
+gwaResult %>% filter(PValue < bf.pvalue) %>% summarise(N=nrow(.), min=min(PValue), max = max(PValue), sd = sd(PValue))
+```
+
+##### 2 C)
+* Population stratification
+* PCA
+
+##### 2 D)
+Investigating SNP `rs4506565`
+```{r}
+snp.4506565 <- gwaResult[which(gwaResult$rsid=='rs4506565'),]
+c(rsid=as.character(snp.4506565$rsid), chr=snp.4506565$Chrom,  pvalue=snp.4506565$PValue, OR=snp.4506565$OR, MajorAllele=as.character(snp.4506565$MajorAllele) ,MinorAllele=as.character(snp.4506565$MinorAllele))
+```
+For this SNP, since the OR denotes comparison of major allele to the minor allele, the odds of getting T2D for each allele `A` is decreased by 0.73, or inversely the odds of getting T2D for each allele `T` is increased by 1.37.
+
+This is a SNP within the Transcription factor 7-like 2 (TCF7L2) gene (0). This SNP has been shown to be associated with T2D in several published papers(1,2,3). The TCF7L2 protein is a transcription factor that acts in the Wnt signalling pathway, which is an actor in transcription regulation, which in part may disrupt the expression of GLP-1 and lead to increased risk for T2D (4)
+
+0 https://www.snpedia.com/index.php/Rs4506565
+1 https://www.ncbi.nlm.nih.gov/pubmed/16936217?dopt=Abstract
+2 https://www.ncbi.nlm.nih.gov/pubmed/16855264?dopt=Abstract
+3 https://www.ncbi.nlm.nih.gov/pubmed/17206141?dopt=Abstract
+4 https://www.ncbi.nlm.nih.gov/pubmed/18599616
+
+
+##### 6)
+```{r}
+x2.values <- qchisq(gwaResult$PValue, 1)
+x2.median.obs <- median(x2.values)
+genome.IF <- x2.median.obs / 0.455
+print(genome.IF)
+```
 
 
 
 ```{r}
-gwaResult[which(gwaResult$rsid=='rs4506565'),]
+gwa5.imm <- read.delim('./imm/gwa5.csv', sep="\t", header=T)
+gwa5.res <- read.delim('./results/gwa5.csv', sep="\t", header=T)
+snps <- read.delim('imm/snps/snps_05', sep="\t", header=F)
 ```
 
