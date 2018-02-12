@@ -43,18 +43,14 @@ if (!file.exists(control1)) {
 # Start processing GWAS data
 library(tidyverse)
 
-control1 <- read.delim(control1, sep="\t", header=F)
-control2 <- read.delim(control2, sep="\t", header=F)
-disease <- read.delim(disease, sep="\t", header=F)
-snps <- read.delim(snps, header=F)
+control1 <- read.delim(control1, sep="\t", header=F, stringsAsFactors = F)
+control2 <- read.delim(control2, sep="\t", header=F, stringsAsFactors = F)
+disease <- read.delim(disease, sep="\t", header=F, stringsAsFactors = F)
+snps <- read.delim(snps, header=F, stringsAsFactors = F)
 
 control <- control1 %>% bind_cols(control2[,5:ncol(control2)])
 
 GWA <- function(csnp, dsnp) {
-  
-  if (csnp[[1]] != chrom || dsnp[[1]] != chrom){
-    return(NA)
-  }
   
   # build contingency table
   snpTable <- table(t(csnp[5:ncol(csnp)]), useNA="no") %>% bind_rows(table(t(dsnp[5:ncol(dsnp)]), useNA="no"))
@@ -66,7 +62,7 @@ GWA <- function(csnp, dsnp) {
     return(NA)
   } else if(ncol(snpTable)==2) {
     # if there are 2 SNPS found in the samples, then we just add an empty count for the third possible configuration of the SNP
-    snpTable <- bind_cols(snpTable, data.frame(`N_N`=c(0,0)))
+    snpTable <- bind_cols(snpTable, data.frame(`N N`=c(0,0)))
   }
   
   snpTable.colNames <- unlist(strsplit(colnames(snpTable[,2]), " "))
@@ -92,12 +88,22 @@ GWA <- function(csnp, dsnp) {
   
 }
 
+# QC for files
+print(paste("Performing QC for chromosome", chrom))
+control.misread <- which(control$V1==chrom)
+control <- control[control.misread,]
+disease <- disease[control.misread,]
+
+disease.misread <- which(disease$V1==chrom)
+control <- control[disease.misread,]
+disease <- disease[disease.misread,]
+
 print(paste("Performing GWA for chromosome", chrom))
 gwaResult <- do.call(rbind, lapply(seq_len(nrow(control)), function(i){GWA(control[i,], disease[i,])}))
 gwaResult <- data.frame(gwaResult, stringsAsFactors = F)
 
 print("Finished GWAS, writing out intermediate data")
-# write.table(gwaResult, file=paste0("./imm/gwa", chrom, ".csv"), sep="\t")
+write.table(gwaResult, file=paste0("./imm/gwa", chrom, ".csv"), sep="\t")
 
 # Remove any rows with NA values
 print("Remove rows with NA")
@@ -135,23 +141,21 @@ gwaResult <- gwaResult %>%
 # Chi-sq tests for SNP and HW
 print("Chi-sq Test for SNPs")
 gwaResult$PValue <- apply(gwaResult, 1, function(x) {
-  chisq.test(
-    matrix(
-      as.numeric(c(x['ControlMajorAlleleCount'], x['ControlMinorAlleleCount'],
-                   x['DiseaseMajorAlleleCount'], x['DiseaseMinorAlleleCount'])),
-      nrow=2, ncol=2, byrow = T)
-    , correct = F)$p.value
+  chisq.test(matrix(
+    as.numeric(c(x['ControlMajorAlleleCount'], x['ControlMinorAlleleCount'],
+                 x['DiseaseMajorAlleleCount'], x['DiseaseMinorAlleleCount'])),
+    nrow=2, ncol=2, byrow = T), correct = F)$p.value
 })
 
 # HW chi-sq test
 print("Chi-sq Test for HW")
 gwaResult$HWPValue <- apply(gwaResult, 1, function(x) {
-  chisq.test(
-    matrix(
-      as.numeric(c(x['AACount'], x['ABCount'], x['BBCount'],
-                   x['HWAA'], x['HWAB'], x['HWBB'])),
-      nrow=2, ncol=3, byrow = T)
-    , correct = F)$p.value
+  m <-  matrix(
+    as.numeric(c(x['AACount'], x['ABCount'], x['BBCount'],
+                 x['HWAA'], x['HWAB'], x['HWBB'])),
+    nrow=2, ncol=3, byrow = T)
+  hw.test.q <- sum((m[1,]-m[2,])^2 / m[2,])
+  return(pchisq(hw.test.q, df=1, lower.tail = F))
 })
 
 # concatenate to the results we want

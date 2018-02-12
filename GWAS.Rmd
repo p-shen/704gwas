@@ -78,8 +78,8 @@ With a p-value of less than 1e-15, there is strong enough evidence that the heal
 
 Import sample data for chromosome 22.
 ```{r eval=F}
-control.58c <- read.delim('sampledata/Affx_gt_58C_Chiamo_22.tped.gz', sep="\t", header=F)
-control.nbs <- read.delim('sampledata/Affx_gt_NBS_Chiamo_22.tped.gz', sep="\t", header=F)
+control.58c <- read.delim('sampledata/Affx_gt_58C_Chiamo_22.tped.gz', sep="\t", header=F, stringsAsFactors = F)
+control.nbs <- read.delim('sampledata/Affx_gt_NBS_Chiamo_22.tped.gz', sep="\t", header=F, stringsAsFactors = F)
 disease <- read.delim('sampledata/Affx_gt_T2D_Chiamo_22.tped.gz', sep="\t", header=F)
 snps <- read.delim('sampledata/snps_22', header=F)
 chrom <- 22
@@ -95,11 +95,7 @@ Sample with 1 SNP
 # Scaling done on O2
 
 GWA <- function(csnp, dsnp) {
-  
-  if (csnp[[1]] != chrom || dsnp[[1]] != chrom){
-    return(NA)
-  }
-  
+
   # build contingency table
   snpTable <- table(t(csnp[5:ncol(csnp)]), useNA="no") %>% bind_rows(table(t(dsnp[5:ncol(dsnp)]), useNA="no"))
   snpTable[is.na(snpTable)] <- 0
@@ -110,7 +106,7 @@ GWA <- function(csnp, dsnp) {
     return(NA)
   } else if(ncol(snpTable)==2) {
     # if there are 2 SNPS found in the samples, then we just add an empty count for the third possible configuration of the SNP
-    snpTable <- bind_cols(snpTable, data.frame(`N_N`=c(0,0)))
+    snpTable <- bind_cols(snpTable, data.frame(`N N`=c(0,0)))
   }
   
   snpTable.colNames <- unlist(strsplit(colnames(snpTable[,2]), " "))
@@ -136,8 +132,18 @@ GWA <- function(csnp, dsnp) {
   
 }
 
+# QC for files
+print(paste("Performing QC for chromosome", chrom))
+control.misread <- which(control$V1==chrom)
+control <- control[control.misread,]
+disease <- disease[control.misread,]
+
+disease.misread <- which(disease$V1==chrom)
+control <- control[disease.misread,]
+disease <- disease[disease.misread,]
+
 print(paste("Performing GWA for chromosome", chrom))
-gwaResult <- do.call(rbind, lapply(seq_along(1:1), function(i){GWA(control[i,], disease[i,])}))
+gwaResult <- do.call(rbind, lapply(seq_along(1:500), function(i){GWA(control[i,], disease[i,])}))
 gwaResult <- data.frame(gwaResult, stringsAsFactors = F)
 
 print("Finished GWAS, writing out intermediate data")
@@ -179,23 +185,21 @@ gwaResult <- gwaResult %>%
 # Chi-sq tests for SNP and HW
 print("Chi-sq Test for SNPs")
 gwaResult$PValue <- apply(gwaResult, 1, function(x) {
-  m <- matrix(
+  chisq.test(matrix(
       as.numeric(c(x['ControlMajorAlleleCount'], x['ControlMinorAlleleCount'],
                    x['DiseaseMajorAlleleCount'], x['DiseaseMinorAlleleCount'])),
-      nrow=2, ncol=2, byrow = T)
-  print(m)
-  chisq.test(m, correct = T)$p.value
+      nrow=2, ncol=2, byrow = T), correct = F)$p.value
   })
   
 # HW chi-sq test
 print("Chi-sq Test for HW")
 gwaResult$HWPValue <- apply(gwaResult, 1, function(x) {
-  chisq.test(
-    matrix(
+   m <-  matrix(
       as.numeric(c(x['AACount'], x['ABCount'], x['BBCount'],
                    x['HWAA'], x['HWAB'], x['HWBB'])),
       nrow=2, ncol=3, byrow = T)
-    , correct = F)$p.value
+   hw.test.q <- sum((m[1,]-m[2,])^2 / m[2,])
+   return(pchisq(hw.test.q, df=1, lower.tail = F))
   })
 
 # concatenate to the results we want
@@ -218,10 +222,6 @@ write.table(gwaResult, file="gwa_results.csv", sep="\t")
 Import the results of GWAS
 ```{r}
 gwaResult <- read.delim('gwa_results.csv', sep="\t", header=T)
-
-snps <- read.delim('imm/snps/snps_22', sep="\t", header=F)
-snps <- snps %>% select(BP=V2, rsid=V5)
-gwaResult <- gwaResult %>% left_join(snps, by="rsid")
 ```
 
 ##### 1 A)
@@ -254,13 +254,13 @@ write.table(gwaResult, file="T2Ds.csv", sep="\t")
 
 QQPlot of PValues
 ```{r}
-ggplot(gwaResult) + geom_qq(mapping=aes(sample=PValue), distribution = qunif)
+ggplot(gwaResult) + geom_qq(mapping=aes(sample=PValue), distribution = qunif) + geom_abline(intercept = 0, slope = 1)
 ```
 
 Manhattan Plot of PValues
 ```{r}
 library(qqman)
-manhattan.data <- gwaResult %>% select(SNP=rsid, CHR=Chrom, P=PValue, BP)
+manhattan.data <- gwaResult %>% select(SNP=rsid, CHR=Chrom, P=PValue, BP=pos)
 manhattan(manhattan.data)
 ```
 
@@ -304,8 +304,37 @@ print(genome.IF)
 
 
 ```{r}
-gwa5.imm <- read.delim('./imm/gwa5.csv', sep="\t", header=T)
+gwa5.imm <- read.delim('./imm_bk/gwa5.csv', sep="\t", header=T)
 gwa5.res <- read.delim('./results/gwa5.csv', sep="\t", header=T)
-snps <- read.delim('imm/snps/snps_05', sep="\t", header=F)
+snps <- read.delim('imm_bk/snps/snps_22', sep="\t", header=F)
+
+gwa22.imm <- read.delim('./imm_bk/gwa22.csv', sep="\t", header=T)
+gwa22.res <- read.delim('./results/gwa22.csv', sep="\t", header=T)
 ```
+
+```{r}
+# allele.counts <- t(apply(control[56:60,-1:-4], 1, function(x) {
+#   tab <- table(t(x))
+#   if(length(tab)< 3){
+#     return(NA)
+#   }
+#   append(dimnames(tab)[[1]], unlist(tab)) 
+#   }
+#   ))
+
+
+test.fun <- function(x, allele) {
+  tab <- table(t(x))
+  print(x[allele])
+  print(tab)
+  ifelse(is.na(x[allele]), x[allele], 0)
+}
+
+
+allele.counts <- apply(control[1:10,-1:-4], 1, function(x) test.fun(x, "C T"))
+                   
+allele.counts
+
+```
+
 

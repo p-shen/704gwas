@@ -3,8 +3,8 @@
 
 # Data files
 WTCCC/*
-results/*
-imm/*
+results*
+imm*
 
 # sbatch output files
 *.err
