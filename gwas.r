@@ -50,13 +50,14 @@ snps <- read.delim(snps, header=F)
 
 control <- control1 %>% bind_cols(control2[,5:ncol(control2)])
 
-GWA <- function(i) {
+GWA <- function(csnp, dsnp) {
   
-  csnp <- control[i,]
-  dsnp <- disease[i,]
+  if (csnp[[1]] != chrom || dsnp[[1]] != chrom){
+    return(NA)
+  }
   
   # build contingency table
-  snpTable <- table(t(csnp[1,5:ncol(csnp)]), useNA="no") %>% bind_rows(table(t(dsnp[1,5:ncol(dsnp)]), useNA="no"))
+  snpTable <- table(t(csnp[5:ncol(csnp)]), useNA="no") %>% bind_rows(table(t(dsnp[5:ncol(dsnp)]), useNA="no"))
   snpTable[is.na(snpTable)] <- 0
   
   # check for edge cases with alleles
@@ -77,27 +78,26 @@ GWA <- function(i) {
   minorAllele <- colnames(snpTable.additive[1,-majorAllele])
   majorAllele <- colnames(snpTable.additive[1,majorAllele])
   
-  return(c(`WTCCC`=as.character(csnp[1,2]), 
-           `MinorAllele`=minorAllele,  
-           `MajorAllele`=majorAllele,
-           `ControlMajorAlleleCount`=snpTable.additive[[1,majorAllele]],
-           `ControlMinorAlleleCount`=snpTable.additive[[1,minorAllele]],
-           `DiseaseMajorAlleleCount`=snpTable.additive[[2,majorAllele]],
-           `DiseaseMinorAlleleCount`=snpTable.additive[[2,minorAllele]],
-           `AACount`=snpTable[[1,1]],
-           `ABCount`=snpTable[[1,2]],
-           `BBCount`=snpTable[[1,3]]))
+  return(c (`Chrom`=as.numeric(csnp[1]),
+            `WTCCC`=as.character(csnp[[2]]), 
+            `MinorAllele`=minorAllele,  
+            `MajorAllele`=majorAllele,
+            `ControlMajorAlleleCount`=snpTable.additive[[1,majorAllele]],
+            `ControlMinorAlleleCount`=snpTable.additive[[1,minorAllele]],
+            `DiseaseMajorAlleleCount`=snpTable.additive[[2,majorAllele]],
+            `DiseaseMinorAlleleCount`=snpTable.additive[[2,minorAllele]],
+            `AACount`=snpTable[[1,1]],
+            `ABCount`=snpTable[[1,2]],
+            `BBCount`=snpTable[[1,3]]) )
   
 }
 
 print(paste("Performing GWA for chromosome", chrom))
-# gwaResult <- data.frame(apply(seq_along(1:5), 1, GWA), stringsAsFactors = F)
-
-gwaResult <- do.call(rbind, lapply(seq_len(nrow(disease)), GWA))
+gwaResult <- do.call(rbind, lapply(seq_len(nrow(control)), function(i){GWA(control[i,], disease[i,])}))
 gwaResult <- data.frame(gwaResult, stringsAsFactors = F)
 
 print("Finished GWAS, writing out intermediate data")
-write.table(gwaResult, file=paste0("./imm/gwa", chrom, ".csv"), sep="\t")
+# write.table(gwaResult, file=paste0("./imm/gwa", chrom, ".csv"), sep="\t")
 
 # Remove any rows with NA values
 print("Remove rows with NA")
@@ -105,7 +105,8 @@ gwaResult <- gwaResult[complete.cases(gwaResult),]
 
 # Class conversions
 print("Class conversion")
-gwaResult <- gwaResult %>% mutate(ControlMajorAlleleCount=as.numeric(ControlMajorAlleleCount),
+gwaResult <- gwaResult %>% mutate(Chrom=as.numeric(Chrom),
+                                  ControlMajorAlleleCount=as.numeric(ControlMajorAlleleCount),
                                   ControlMinorAlleleCount=as.numeric(ControlMinorAlleleCount),
                                   DiseaseMajorAlleleCount=as.numeric(DiseaseMajorAlleleCount),
                                   DiseaseMinorAlleleCount=as.numeric(DiseaseMinorAlleleCount),
@@ -115,7 +116,7 @@ gwaResult <- gwaResult %>% mutate(ControlMajorAlleleCount=as.numeric(ControlMajo
 
 # get RSID
 print("Get RSID")
-snps <- select(snps, V4, V5) %>% transmute(WTCCC=V4, rsid=V5)
+snps <- snps %>% select(V2, V4, V5) %>% transmute(WTCCC=V4, rsid=V5, pos=V2)
 gwaResult <- gwaResult %>% left_join(snps, by='WTCCC')
 
 print("Frequency Calculations")
@@ -124,7 +125,7 @@ gwaResult <- gwaResult %>%
   mutate(DiseaseMinAlleleFreq=DiseaseMinorAlleleCount/(DiseaseMinorAlleleCount+DiseaseMajorAlleleCount))
 
 print("Calculate OR Ratios")
-gwaResult <- gwaResult %>% mutate(OR=(DiseaseMinorAlleleCount*ControlMajorAlleleCount)/(DiseaseMajorAlleleCount*ControlMinorAlleleCount))
+gwaResult <- gwaResult %>% mutate(OR=(DiseaseMajorAlleleCount*ControlMinorAlleleCount)/(DiseaseMinorAlleleCount*ControlMajorAlleleCount))
 
 print("generate HW p and q values")
 gwaResult <- gwaResult %>% 
@@ -155,10 +156,7 @@ gwaResult$HWPValue <- apply(gwaResult, 1, function(x) {
 
 # concatenate to the results we want
 print("Select results table")
-gwaResult <- gwaResult %>% select(rsid, MinorAllele, MajorAllele, DiseaseMinAlleleFreq, ControlMinAlleleFreq, OR, PValue, HWPValue)
-
-print("Attach chromosome number")
-gwaResult$Chrom <- chrom
+gwaResult <- gwaResult %>% select(Chrom, rsid, pos, MinorAllele, MajorAllele, DiseaseMinAlleleFreq, ControlMinAlleleFreq, OR, PValue, HWPValue)
 
 print("Write out results to file")
 write.table(gwaResult, file=paste0("./results/gwa", chrom, ".csv"), sep="\t")
