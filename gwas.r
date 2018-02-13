@@ -166,4 +166,4 @@ print("Select results table")
 gwaResult <- gwaResult %>% select(Chrom, rsid, pos, MinorAllele, MajorAllele, DiseaseMinAlleleFreq, ControlMinAlleleFreq, OR, PValue, HWPValue)
 
 print("Write out results to file")
-write.table(gwaResult, file=paste0("./results/",diseaseName, "/gwa",  com, ".csv"), sep="\t")
+write.table(gwaResult, file=paste0("./results/",diseaseName, "/gwa",  chrom, ".csv"), sep="\t")
