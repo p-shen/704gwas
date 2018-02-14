@@ -1,15 +1,14 @@
 ---
 title: "704 Assignment 1 - GWAS"
 author: "Peter Shen"
-date: 'Sys.date()'
+date: "`r Sys.Date()`"
 output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, dev = 'png')
 library(tidyverse)
 library(broom)
-library(knitr)
 library(qqman)
 library(reshape2)
 ```
@@ -215,15 +214,6 @@ print("Write out results to file")
 # write.table(gwaResult, file=paste0("./results/gwa", chrom, ".csv"), sep="\t")
 ```
 
-Stitch Together the output files
-```{r  eval=F}
-gwaResult <- do.call(rbind, lapply(1:22, function(i) {
-  read.delim(paste0("./results/gwa", i, ".csv"), sep="\t", header=T)
-}))
-
-write.table(gwaResult, file="gwa_results.csv", sep="\t")
-```
-
 Import the results of GWAS for T2D
 ```{r}
 gwaResult <- read.delim('./results/gwa_results_T2D.csv', sep="\t", header=T)
@@ -332,8 +322,7 @@ gwaResult <- gwaResult %>% mutate(PValue.adjust=pchisq(qchisq(1-PValue, 1)/genom
 
 QQPlot
 ```{r}
-gwaResult$logPvalue <- -log10(gwaResult$PValue)
-ggplot(gwaResult) + geom_qq(mapping=aes(sample=logPvalue), distribution = qunif) + geom_abline(intercept = 0, slope = 1) + ylim(0, 2)
+qqman::qq(gwaResult$PValue)
 ```
 
 
@@ -366,10 +355,19 @@ gwaResult.All <- gwaResult.All %>%  filter(HWPValue >= 0.05 & ControlMinAlleleFr
 print(paste("SNPs after filter: ", nrow(gwaResult.All)))
 ```
 
+Order the disease by number of significant associations found.
 
-Do a GGPlot of the QQ plots for all diseases
+* PValues more than `1e-7` for each disease
+```{r}
+summ <- gwaResult.All %>% filter(PValue <= 1e-7) %>% group_by(Disease) %>% summarise(N=length(PValue), min=min(PValue), max = max(PValue), sd = sd(PValue)) %>% arrange(desc(N))
+summ
+gwaResult.All$Disease <- factor(gwaResult.All$Disease, levels=summ$Disease)
+```
+
+
+Do a GGPlot of the QQ plots for all diseases ordered by number of associations found.
 ```{r, warning=TRUE}
-ggplot(gwaResult.All) + geom_qq(mapping=aes(sample=logPvalue), distribution = qunif) + geom_abline(intercept = 0, slope = 1) + facet_wrap(~ Disease)
+ggplot(gwaResult.All) + geom_qq(mapping=aes(sample=logPvalue), distribution = qunif) + geom_abline(intercept = 0, slope = 1) + facet_wrap(~Disease)
 ```
 
 ##### 2)
