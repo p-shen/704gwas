@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(broom)
 library(knitr)
+library(qqman)
+library(reshape2)
 ```
 
 #### Background Questions
@@ -60,17 +62,20 @@ B)
 chisq.test(df5.additive, correct = F)
 ```
 
-With a p-value of 0.924, we do not have strong enough evidence to conclude there is an association between rsGOINGALLIN and bipolar disorder.
+With a p-value of 0.746, we do not have strong enough evidence to conclude there is an association between rsGOINGALLIN and bipolar disorder.
 
 C)
 ```{r}
 df5.control <- df5[2,]
 N <- sum(df5.control)
 df5.hw <- df5.control %>% transmute(p=(2*CC+CT)/(2*CC+2*CT+2*TT)) %>% mutate(q=1-p) %>% transmute(CC=N*p^2, CT=N*2*p*q, TT=N*q^2)
-chisq.test(bind_rows(df5.control, df5.hw), correct = F)
+
+df5.hw <-  bind_rows(df5.control, df5.hw)
+df5.hw.q <- sum((df5.hw[1,]-df5.hw[2,])^2 / df5.hw[2,])
+pchisq(df5.hw.q, df=1, lower.tail = F)
 ```
 
-With a p-value of less than 1e-15, there is strong enough evidence that the healthy population deviates from the Hardy-Weinberg equilibrium.
+With a p-value of less than 0.578, we do not have strong enough evidence to refute the null hypothesis that the control and disease allele frequencies are in Hardy-Weinberg equilibrium.
 
 #### Execution of GWAS
 
@@ -143,7 +148,7 @@ control <- control[disease.misread,]
 disease <- disease[disease.misread,]
 
 print(paste("Performing GWA for chromosome", chrom))
-gwaResult <- do.call(rbind, lapply(seq_along(1:500), function(i){GWA(control[i,], disease[i,])}))
+gwaResult <- do.call(rbind, lapply(seq_along(1:1), function(i){GWA(control[i,], disease[i,])}))
 gwaResult <- data.frame(gwaResult, stringsAsFactors = F)
 
 print("Finished GWAS, writing out intermediate data")
@@ -219,9 +224,9 @@ gwaResult <- do.call(rbind, lapply(1:22, function(i) {
 write.table(gwaResult, file="gwa_results.csv", sep="\t")
 ```
 
-Import the results of GWAS
+Import the results of GWAS for T2D
 ```{r}
-gwaResult <- read.delim('gwa_results.csv', sep="\t", header=T)
+gwaResult <- read.delim('./results/gwa_results_T2D.csv', sep="\t", header=T)
 ```
 
 ##### 1 A)
@@ -234,7 +239,7 @@ gwaResult <- gwaResult %>%  filter(PValue > 0 & HWPValue > 0)
 
 # SNPs that deviate from Hardy-Weinberg because these are most likely due to genotyping errors
 # and SNPs that have MAF < 0.01
-gwaResult <- gwaResult %>%  filter(HWPValue > 0.05 & ControlMinAlleleFreq > 0.01 & DiseaseMinAlleleFreq > 0)
+gwaResult <- gwaResult %>%  filter(HWPValue >= 0.05 & ControlMinAlleleFreq >= 0.01 & DiseaseMinAlleleFreq)
 print(paste("SNPs after filter: ", nrow(gwaResult)))
 ```
 
@@ -255,12 +260,12 @@ write.table(gwaResult, file="T2Ds.csv", sep="\t")
 QQPlot of PValues
 ```{r}
 gwaResult$logPvalue <- -log10(gwaResult$PValue)
-ggplot(gwaResult) + geom_qq(mapping=aes(sample=logPvalue), distribution = qunif) + geom_abline(intercept = 0, slope = 1) + ylim(0, 15)
+# ggplot(gwaResult) + geom_qq(mapping=aes(sample=logPvalue), distribution = qunif) + geom_abline(intercept = 0, slope = 1)
+qqman::qq(gwaResult$PValue)
 ```
 
 Manhattan Plot of PValues
 ```{r}
-library(qqman)
 manhattan.data <- gwaResult %>% select(SNP=rsid, CHR=Chrom, P=PValue, BP=pos)
 manhattan(manhattan.data)
 ```
@@ -270,7 +275,7 @@ manhattan(manhattan.data)
 
 SNPs exceeding Bonferonni threshold for T2D
 ```{r}
-gwaResult %>% filter(PValue < bf.pvalue) %>% summarise(N=nrow(.), min=min(PValue), max = max(PValue), sd = sd(PValue))
+gwaResult %>% filter(PValue <= bf.pvalue) %>% summarise(N=nrow(.), min=min(PValue), max = max(PValue), sd = sd(PValue))
 ```
 
 ##### 2 C)
@@ -310,8 +315,8 @@ In the background question, we are only looking at one candidate SNP that could 
 ##### 5)
 We could control for population stratification in the SNP array using PCA or adjusting for genome inflation factor.
 
-
 ##### 6)
+Calculating genome inflation factor
 ```{r}
 x2.values <- qchisq(1-gwaResult$PValue, 1) # other tail
 x2.median.obs <- median(x2.values)
@@ -320,11 +325,12 @@ print(genome.IF)
 ```
 
 ##### 7)
-
+Adjusting pvalue based on genome inflation factor
 ```{r}
 gwaResult <- gwaResult %>% mutate(PValue.adjust=pchisq(qchisq(1-PValue, 1)/genome.IF, 1, lower.tail = F)) %>% filter(PValue.adjust > 0)
 ```
 
+QQPlot
 ```{r}
 gwaResult$logPvalue <- -log10(gwaResult$PValue)
 ggplot(gwaResult) + geom_qq(mapping=aes(sample=logPvalue), distribution = qunif) + geom_abline(intercept = 0, slope = 1) + ylim(0, 2)
@@ -335,4 +341,76 @@ ggplot(gwaResult) + geom_qq(mapping=aes(sample=logPvalue), distribution = qunif)
 manhattan.data <- gwaResult %>% select(SNP=rsid, CHR=Chrom, P=PValue.adjust, BP=pos)
 manhattan(manhattan.data)
 ```
+
+
+##### Genetic Architecture and Disease Similarity
+
+###### 1)
+Read in the data file for all of the diseases
+```{r}
+gwaResult.All <- read.delim("./results/gwa_results_all.csv", sep = "\t", header = T, stringsAsFactors = F)
+gwaResult.All$Disease <-as.factor(gwaResult.All$Disease)
+gwaResult.All$logPvalue <- -log10(gwaResult.All$PValue)
+```
+
+Filter out the data results
+```{r}
+print(paste("SNPs before filter: ", nrow(gwaResult.All)))
+
+# Some SNPs have pvalues of 0
+gwaResult.All <- gwaResult.All %>%  filter(PValue > 0 & HWPValue > 0)
+
+# SNPs that deviate from Hardy-Weinberg because these are most likely due to genotyping errors
+# and SNPs that have MAF < 0.01
+gwaResult.All <- gwaResult.All %>%  filter(HWPValue >= 0.05 & ControlMinAlleleFreq >= 0.01 & DiseaseMinAlleleFreq)
+print(paste("SNPs after filter: ", nrow(gwaResult.All)))
+```
+
+
+Do a GGPlot of the QQ plots for all diseases
+```{r, warning=TRUE}
+ggplot(gwaResult.All) + geom_qq(mapping=aes(sample=logPvalue), distribution = qunif) + geom_abline(intercept = 0, slope = 1) + facet_wrap(~ Disease)
+```
+
+##### 2)
+
+What diseases are associated with SNP rs6679677?
+```{r}
+snp.rs6679677 <- gwaResult.All[which(gwaResult.All$rsid=='rs6679677'),]
+snp.rs6679677 %>% select(Disease, PValue, rsid) %>% filter(PValue < 1e-7)
+```
+
+Type 1 Diabetes and Rheumatoid Arthritis are significantly associated with this SNP.
+
+##### 3)
+
+If a SNP is found in multiple diseases, that means the gene that contains the SNP is involved in multiple biological pathways (ie. in a higher Gene Ontology), so it has effects towards a multitude of phenotypes. A good example of this is exhibited in autoimmune diseases that involve the MHC pathway towards broad autoimmune diseases.
+
+
+##### 4)
+
+```{r}
+corr.matrix <- gwaResult.All %>% select(Disease, OR) %>% split(.$Disease)
+
+#resize to the smallest dataset so it can be converted to a data.frame
+corr.matrix <- lapply(corr.matrix, function(x){
+  x[1:375972,2]
+})
+
+corr.matrix <- as.data.frame(corr.matrix)
+corr.values <- cor(corr.matrix)
+
+lowerTri <- function(cormat){
+    cormat[upper.tri(cormat)]<- NA
+    return(cormat)
+}
+
+corr.values <- lowerTri(corr.values)
+corr.values <- melt(corr.values, na.rm = T)
+
+ggplot(data = corr.values, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile()
+```
+
+From the plot, it looks like Bipolar Disorder and RA are most correlated in their OR for their SNPs with correlation value of 0.817477261.
 

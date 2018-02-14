@@ -5,6 +5,7 @@
 WTCCC/*
 results*
 imm*
+snps_all
 
 # sbatch output files
 *.err
